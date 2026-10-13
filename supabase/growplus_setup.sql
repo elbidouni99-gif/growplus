@@ -94,6 +94,10 @@ drop policy if exists "Users can update their own profile" on public.profiles;
 create policy "Users can update their own profile" on public.profiles
   for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
 
+-- Restrict profile updates so users cannot change their own points balance.
+revoke update on public.profiles from authenticated;
+grant update (display_name) on public.profiles to authenticated;
+
 -- Only trusted administrators should approve submissions or withdrawals.
 -- Admin approval should be implemented with a server-side Edge Function or
 -- a restricted database role, never by exposing a service-role key in the website.
