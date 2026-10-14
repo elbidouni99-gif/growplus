@@ -57,6 +57,8 @@
       <input id="authEmail" type="email" autocomplete="email" required placeholder="you@example.com">
       <label for="authPassword">Password</label>
       <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required placeholder="At least 6 characters">
+      <button class="btn secondary" id="googleSignIn" type="button" style="width:100%;margin:12px 0">Continue with Google</button>
+      <button class="text-link" id="forgotPassword" type="button" style="border:0;background:transparent;color:#075dc2;padding:8px 0;cursor:pointer">Forgot your password?</button>
       <div class="auth-row"><button class="btn primary" id="authSubmit" type="submit">Sign in</button><button class="btn secondary" id="authToggle" type="button">Create account</button><button class="btn secondary" id="authLogout" type="button" style="display:none">Sign out</button></div>
       <div class="auth-message" id="authMessage" role="status" aria-live="polite"></div>
     </form>
@@ -81,6 +83,7 @@ const SUPABASE_PUBLISHABLE_KEY="sb_publishable_beyea3OFUnhRZ0LdObIGLQ_zbGB_vYO";
 const authModal=document.getElementById("authModal"), authForm=document.getElementById("authForm");
 const authMessage=document.getElementById("authMessage"), authSubmit=document.getElementById("authSubmit");
 const authToggle=document.getElementById("authToggle"), authLogout=document.getElementById("authLogout");
+const googleSignIn=document.getElementById("googleSignIn"), forgotPassword=document.getElementById("forgotPassword");
 const authName=document.getElementById("authName"), authEmail=document.getElementById("authEmail"), authPassword=document.getElementById("authPassword");
 let authMode="signin", supabaseClient=null;
 try {
@@ -99,6 +102,27 @@ async function submitAuth(event){event.preventDefault();if(!supabaseClient){setA
 document.getElementById("authClose").addEventListener("click",closeAuth);
 authModal.addEventListener("click",event=>{if(event.target===authModal)closeAuth();});
 authToggle.addEventListener("click",()=>setMode(authMode==="signin"?"signup":"signin"));
+googleSignIn.addEventListener("click",async()=>{
+  if(!supabaseClient){setAuthMessage("Authentication is not available. Refresh and try again.");return;}
+  googleSignIn.disabled=true;setAuthMessage("Connecting to Google…");
+  try{
+    const {error}=await supabaseClient.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin+window.location.pathname}});
+    if(error)throw error;
+  }catch(error){setAuthMessage(error.message||"Google sign-in could not start. Confirm that Google is enabled in Supabase and its OAuth credentials are configured.");}
+  finally{googleSignIn.disabled=false;}
+});
+forgotPassword.addEventListener("click",async()=>{
+  if(!supabaseClient){setAuthMessage("Authentication is not available. Refresh and try again.");return;}
+  const email=authEmail.value.trim();
+  if(!email){setAuthMessage("Enter your email address first, then tap Forgot your password.");authEmail.focus();return;}
+  forgotPassword.disabled=true;setAuthMessage("Sending password reset email…");
+  try{
+    const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+    if(error)throw error;
+    setAuthMessage("If this email belongs to an account, a password reset message should arrive. Check Inbox and Spam.");
+  }catch(error){setAuthMessage(error.message||"Could not request password reset. Check Supabase Auth email settings.");}
+  finally{forgotPassword.disabled=false;}
+});
 authForm.addEventListener("submit",submitAuth);
 authLogout.addEventListener("click",async()=>{if(!supabaseClient)return;const {error}=await supabaseClient.auth.signOut();if(error){setAuthMessage(error.message);return;}setMode("signin");authName.value="";authPassword.value="";setAuthMessage("You have signed out.");authLogout.style.display="none";authToggle.style.display="inline-flex";authSubmit.style.display="inline-flex";});
 if(supabaseClient){supabaseClient.auth.onAuthStateChange(()=>{refreshAuth().catch(()=>{});});refreshAuth().catch(()=>{});}
