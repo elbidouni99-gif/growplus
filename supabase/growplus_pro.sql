@@ -116,3 +116,19 @@ create index if not exists task_submissions_status_idx on public.task_submission
 create index if not exists withdrawal_requests_status_idx on public.withdrawal_requests(status,created_at);
 
 -- Security note: browser users can only invoke review RPCs if their auth.uid() is in growplus_admins.
+
+
+-- Minimal AI usage log. The edge function enforces a per-user daily quota.
+create table if not exists public.growplus_ai_usage (
+ id bigint generated always as identity primary key,
+ user_id uuid not null references auth.users(id) on delete cascade,
+ created_at timestamptz not null default now()
+);
+alter table public.growplus_ai_usage enable row level security;
+drop policy if exists "Users can read own AI usage" on public.growplus_ai_usage;
+create policy "Users can read own AI usage" on public.growplus_ai_usage
+ for select to authenticated using (auth.uid() = user_id);
+drop policy if exists "Users can insert own AI usage" on public.growplus_ai_usage;
+create policy "Users can insert own AI usage" on public.growplus_ai_usage
+ for insert to authenticated with check (auth.uid() = user_id);
+create index if not exists growplus_ai_usage_user_created_idx on public.growplus_ai_usage(user_id,created_at desc);
