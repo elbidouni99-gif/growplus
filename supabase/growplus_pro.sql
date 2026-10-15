@@ -23,13 +23,22 @@ create table if not exists public.admin_audit_log (
 alter table public.growplus_admins enable row level security;
 alter table public.admin_audit_log enable row level security;
 
+create or replace function public.growplus_is_admin()
+returns boolean language sql stable security definer
+set search_path = '' as $
+ select exists(select 1 from public.growplus_admins where user_id = (select auth.uid()));
+$;
+revoke all on function public.growplus_is_admin() from public;
+grant execute on function public.growplus_is_admin() to authenticated;
+
+
 drop policy if exists "Admins can view admin roster" on public.growplus_admins;
 create policy "Admins can view admin roster" on public.growplus_admins
- for select to authenticated using (exists(select 1 from public.growplus_admins a where a.user_id=auth.uid()));
+ for select to authenticated using (public.growplus_is_admin());
 
 drop policy if exists "Admins can view audit log" on public.admin_audit_log;
 create policy "Admins can view audit log" on public.admin_audit_log
- for select to authenticated using (exists(select 1 from public.growplus_admins a where a.user_id=auth.uid()));
+ for select to authenticated using (public.growplus_is_admin());
 
 drop policy if exists "Admins can view all submissions" on public.task_submissions;
 create policy "Admins can view all submissions" on public.task_submissions
@@ -41,16 +50,8 @@ create policy "Admins can view all withdrawals" on public.withdrawal_requests
 
 drop policy if exists "Admins can manage tasks" on public.tasks;
 create policy "Admins can manage tasks" on public.tasks
- for all to authenticated using (exists(select 1 from public.growplus_admins a where a.user_id=auth.uid()))
- with check (exists(select 1 from public.growplus_admins a where a.user_id=auth.uid()));
-
-create or replace function public.growplus_is_admin()
-returns boolean language sql stable security definer
-set search_path = '' as $$
- select exists(select 1 from public.growplus_admins where user_id = (select auth.uid()));
-$$;
-revoke all on function public.growplus_is_admin() from public;
-grant execute on function public.growplus_is_admin() to authenticated;
+ for all to authenticated using (public.growplus_is_admin())
+ with check (public.growplus_is_admin());
 
 create or replace function public.growplus_review_submission(
  p_submission_id uuid, p_decision text, p_admin_note text default ''
