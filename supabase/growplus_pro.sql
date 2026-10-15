@@ -56,8 +56,10 @@ create or replace function public.growplus_review_submission(
  p_submission_id uuid, p_decision text, p_admin_note text default ''
 ) returns jsonb
 language plpgsql security definer set search_path = '' as $$
-declare s public.task_submissions%rowtype;
-declare actor uuid := auth.uid();
+declare
+ s public.task_submissions%rowtype;
+ actor uuid := auth.uid();
+ task_reward integer := 0;
 begin
  if actor is null or not exists(select 1 from public.growplus_admins a where a.user_id=actor) then
    raise exception 'Administrator access required';
@@ -66,28 +68,33 @@ begin
  select * into s from public.task_submissions where id=p_submission_id for update;
  if not found then raise exception 'Submission not found'; end if;
  if s.status <> 'pending' then raise exception 'Only pending submissions can be reviewed'; end if;
+ if p_decision='approved' then
+   select coalesce(t.reward_points,0) into task_reward from public.tasks t where t.id=s.task_id;
+   task_reward := coalesce(task_reward,0);
+ end if;
  update public.task_submissions set status=p_decision, reviewed_at=now(),
-   reward_points=case when p_decision='approved' then coalesce((select reward_points from public.tasks where id=s.task_id),0) else 0 end
+   reward_points=case when p_decision='approved' then task_reward else 0 end
  where id=s.id;
  if p_decision='approved' then
-   update public.profiles set points_balance=points_balance+s.reward_points,
-     total_earned_points=total_earned_points+s.reward_points, updated_at=now()
+   update public.profiles set points_balance=coalesce(points_balance,0)+task_reward,
+     total_earned_points=coalesce(total_earned_points,0)+task_reward, updated_at=now()
    where id=s.user_id;
    insert into public.points_ledger(user_id,points_delta,reason,submission_id)
-   values(s.user_id,s.reward_points,'Task approved',s.id);
+   values(s.user_id,task_reward,'Task approved',s.id);
  end if;
  insert into public.admin_audit_log(admin_id,action,target_type,target_id,details)
  values(actor,'submission_'||p_decision,'task_submission',s.id,
-   jsonb_build_object('user_id',s.user_id,'note',left(coalesce(p_admin_note,''),1000),'points',case when p_decision='approved' then s.reward_points else 0 end));
- return jsonb_build_object('ok',true,'status',p_decision);
+   jsonb_build_object('user_id',s.user_id,'note',left(coalesce(p_admin_note,''),1000),'points',case when p_decision='approved' then task_reward else 0 end));
+ return jsonb_build_object('ok',true,'status',p_decision,'points',case when p_decision='approved' then task_reward else 0 end);
 end; $$;
 
 create or replace function public.growplus_review_withdrawal(
  p_request_id uuid, p_decision text, p_admin_note text default ''
 ) returns jsonb
 language plpgsql security definer set search_path = '' as $$
-declare w public.withdrawal_requests%rowtype;
-declare actor uuid := auth.uid();
+declare
+ w public.withdrawal_requests%rowtype;
+ actor uuid := auth.uid();
 begin
  if actor is null or not exists(select 1 from public.growplus_admins a where a.user_id=actor) then
    raise exception 'Administrator access required';
